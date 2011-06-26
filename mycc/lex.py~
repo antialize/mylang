@@ -1,0 +1,17 @@
+
+class FA:
+    
+    def __init__(self):
+        self.nextState = 0
+        self.states = []
+        self.acceptStates[]
+        self.transitions = {}
+
+    def eleminate_lambdas():
+        pass
+
+    def determinate():
+        pass
+
+    def remove_unreachable():
+        pass

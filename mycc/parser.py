@@ -20,9 +20,12 @@ def gramma_lex(line):
     while i < len(line):
         if line[i] == ' ':
             i += 1
-        elif line[i] in ['(',')','+','|','*','?']:
-           toks.append( (OP,line[i]) )
-           i += 1
+        elif line[i] in ['(',')','+','|','*','?',':']:
+            toks.append( (OP,line[i]) )
+            i += 1
+        elif i+1 < len(line) and line[i:i+2] == '=>':
+            toks.append( (OP, line[i:i+2]) )
+            i += 2
         elif line[i].islower():
             j=i
             while j < len(line) and (line[j].isalpha() or line[j].isdigit() or line[j] == '_'): j += 1
@@ -41,6 +44,26 @@ def gramma_lex(line):
         else:
             raise Exception("Bad gramma, unexpected bad token '%s'"%line[i:])
     return toks
+
+
+def parse_gen(toks, i):
+    assert(toks[i][0] == TLIT)
+    i += 1
+    assert(toks[i] == (OP, '('))
+    i += 1
+    l = []
+    while toks[i][0] == glit:
+    
+    
+    assert(toks[i] == (OP, ')'))
+           
+    
+def parse_yield(toks, i):
+    e, i = parse_condjunction(toks, i)
+    if toks[i] != (OP, "=>"): return (e, i)
+    e2, i = parse_gen(toks, i+1)
+    return (YieldStmt(e,e2), i)
+        
 
 def parse_gramma(lines):
     for line in lines:
@@ -61,6 +84,7 @@ def parse_gramma(lines):
         else:
             toks = gramma_lex(d)
             print toks
+    
 
 f = open("../gramma.my","r")
 parse_gramma(f.readlines())

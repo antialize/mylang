@@ -4,4 +4,10 @@
 CNAME := [A-z][a-zA-Z0-9_]*
 VNAVE := [a-z][a-zA-Z0-9_]*
 
-import_stmt := "import" VNAME
+import_stmt := "import" VNAME:name NL => ImportStmt(name)
+
+if_stmt := INDENT "if" expr ":" (NL INCINDENT block_stmt DECINDENT | simple_stmt)
+
+block_stmt := if_stmt
+
+
