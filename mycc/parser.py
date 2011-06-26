@@ -48,22 +48,66 @@ def gramma_lex(line):
 
 def parse_gen(toks, i):
     assert(toks[i][0] == TLIT)
+    name=toks[i][1]
     i += 1
     assert(toks[i] == (OP, '('))
     i += 1
     l = []
     while toks[i][0] == glit:
-    
-    
+        l.append(toks[i][1])
+        i += 1
+        assert(toks[i][1] in (',',')'))
+        if toks[i][1] == ',': i += 1
     assert(toks[i] == (OP, ')'))
-           
-    
+    i += 1
+    return (Generator(name, l), i)
+
+
+def parse_concat(toks, i):
+    es=[]
+    while i < len(toks):
+        if toks[i] == (OP, '('):
+            cj, i = parse_condjunction(toks, i+1)
+            assert(toks[i] == (OP, ')'))
+            i += 1
+            es.append(cj)
+        elif toks[i][0] in (KEYWORD, GLIT, TLIT):
+            if toks[i][0] == KEYWORD:
+                e = Keyword(toks[i][1])
+            elif toks[i][0] == GLIT:
+                e = GrammaRef(toks[i][1])
+            else:
+                e = TokenRef(toks[i][1])
+            i += 1
+            if i < len(toks) and toks[i] == (OP, ':'):
+                i += 1
+                assert(toks[i][0] == GLIT)
+                e.output = toks[i][1]
+                i += 1
+            es.append(e)
+        else:
+            break
+
+    assert(len(es) != 0)
+    if len(es) == 1:
+        return (es[0], i)
+    return (Concat(es), i)
+
+def parse_condjunction(toks, i):
+    cc, i = parse_concat(toks, i)
+    if toks[i] != (OP, '|'): return (cc, i)
+    ccs = [cc]
+    while toks[i] == (OP, '|'):
+        cc, i = parse_concat(toks, i+1)
+        ccs.append(cc)
+    return (Conjunction(ccs), i)
+
+
 def parse_yield(toks, i):
     e, i = parse_condjunction(toks, i)
     if toks[i] != (OP, "=>"): return (e, i)
     e2, i = parse_gen(toks, i+1)
-    return (YieldStmt(e,e2), i)
-        
+    return (Yield(e,e2), i)
 
 def parse_gramma(lines):
     for line in lines:
