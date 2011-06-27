@@ -3,6 +3,9 @@
 #########################> TOKENS <#########################
 CNAME := [A-z][a-zA-Z0-9_]*
 VNAVE := [a-z][a-zA-Z0-9_]*
+STRING := "[^"\\]*(\\.[^"\\]*)*"
+COMMENT := [\#].*
+WHITESPACE := [\t ]+
 
 import_stmt := "import" VNAME:name NL => ImportStmt(name)
 

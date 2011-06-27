@@ -1,3 +1,4 @@
+import lex
 """
 Gramma gramma
 
@@ -110,6 +111,8 @@ def parse_yield(toks, i):
     return (Yield(e,e2), i)
 
 def parse_gramma(lines):
+    lexer = lex.Lexer() 
+    
     for line in lines:
         i=0
         while i < len(line):
@@ -124,10 +127,13 @@ def parse_gramma(lines):
         
         name, d = map(str.strip, line.split(":=",1))
         if name[0].isupper():
-            print name, d
+            lexer.addClass(name, d)
         else:
             toks = gramma_lex(d)
-            print toks
+            for i in range(len(toks)):
+                if toks[i][0] != KEYWORD: continue
+                toks[i] = (TLIT, lexer.addKeyword(toks[i][1]))
+    lexer.generate('python')
     
 
 f = open("../gramma.my","r")
