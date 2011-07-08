@@ -60,6 +60,51 @@ class FA:
                 res.append("%d => %d [label=%s%s]"%(s, d, charRangeToStr(ch[d]), a))
         return "\n".join(res)
 
+    def minimize(self):
+        """Crazy slow FA minimizing algorithm"""
+        x=set()
+        for a in self.states:
+            x.add( frozenset((a, None)) )
+        for a in self.states:
+            for b in self.states:
+                if self.acc.get(a,None) != self.acc.get(b,None):
+                    x.add( frozenset((a, b)) )
+        while True:
+            s=len(x)
+            for a in self.states:
+                for b in self.states:
+                    for c in frozenset(self.trans[a].keys() + self.trans[b].keys()):
+                        an = self.trans[a].get(c, None)
+                        bn = self.trans[b].get(c, None)
+                        if frozenset((an, bn)) in x:
+                            x.add( frozenset((a,b)) )
+                            break
+            if len(x) == s:
+                break
+
+        ns={}
+        inv={}
+        for a in self.states:
+            if a in ns: continue
+            i = len(inv)
+            ns[a] = i
+            inv[i] = a
+            for b in self.states:
+                if not frozenset( (a,b) ) in x:
+                    ns[b] = ns[a]
+
+        acc={}
+        trans={}
+        for i in range(len(inv)):
+            s = inv[i]
+            if s in self.acc: acc[i] = self.acc[s]
+            trans[i] = {}
+            for ch in self.trans[s]:
+                trans[i][ch] = ns[self.trans[s][ch]]
+        self.states = range(len(inv))
+        self.acc = acc
+        self.trans = trans
+
 class NFA:
     def __init__(self):
         self.states = []
@@ -280,7 +325,9 @@ def parseElm(reg, i):
                     mask[i] = True
             elif reg[i] == '\\':
                 if reg[i+1] == 't':
-                    mask[9] = True
+                    mask[ord('\t')] = True
+                elif reg[i+1] == 'n':
+                    mask[ord('\n')] = True
                 else:
                     mask[ord(reg[i+1])]=True
                 i += 2
@@ -363,13 +410,61 @@ class Lexer:
     def addClass(self, name, regex):
         self.rules.append( (name, regex) )
 
+    def outputPython(self, fa):
+        out=[]
+        out.append("#Token constants")
+        am = {}
+        i = len(fa.states)
+        for name in self.acc:
+            am[self.acc[name]] = i
+            out.append("%s=%d"%(name, i))
+            i += 1
+        badtoken=i
+        out.append("BADTOKEN=%d"%i)
+        out.append("")
+        out.append("#State Table")
+        out.append("st=[")
+        for s in fa.states:
+            o=[]
+            if s in fa.acc:
+                a="%2d"%(am[fa.acc[s]])
+            else:
+                a="%2d"%(badtoken)
+            for i in range(256):
+                if chr(i) in fa.trans[s]:
+                    o.append("%2d"%fa.trans[s][chr(i)])
+                else:
+                    o.append(a)
+            out.append( "  [%s],"%(",".join(o)))
+        out.append("]")
+        out.append("")
+        out.append("""def tokenize(inp):
+  inp+="\\0"
+  tokens = []
+  i=0
+  j=0
+  s=0
+  while i < len(inp):
+    s=st[s][ord(inp[i])]
+    if s >= %d:
+      if s == BADTOKEN: break
+      tokens.append( (s, inp[j:i]) )
+      s=0
+      j=i
+    else:
+      i+=1
+  return tokens
+"""%(len(fa.states)))
+        return out
+
+        
     def generate(self, lang):
         nfa=NFA()
         s0 = nfa.addState()
+
         i=0
         for name,regex in self.rules:
             self.acc[name] = i
-            print regex
             x = parseRegex(regex)
             (i0, o) = x.createNFA(nfa)
             nfa.addTransition(s0, i0, LAMBDA)
@@ -381,8 +476,10 @@ class Lexer:
         nfa.lambdaClosure()
         nfa.eliminateLambdas()
         fa = nfa.determinate()
-        print fa
+        fa.minimize()
 
+        return self.outputPython(fa)
+        
         
 #def parseRegex(reg):
 #    i,e=parseOr(reg+"|", 0)

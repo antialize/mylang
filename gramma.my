@@ -3,14 +3,32 @@
 #########################> TOKENS <#########################
 CNAME := [A-z][a-zA-Z0-9_]*
 VNAVE := [a-z][a-zA-Z0-9_]*
+INTEGER := [0-9]+
+FLOAT := [0-9]*\.[0-9]+
 STRING := "[^"\\]*(\\.[^"\\]*)*"
-COMMENT := [\#].*
-WHITESPACE := [\t ]+
+COMMENT_ := [\#][^\n]*
+TABS := [\t]+
+NEWLINE := [\n]
+WHITESPACE_ := [\t ]+
 
-import_stmt := "import" VNAME:name NL => ImportStmt(name)
+######################> Tree Classes <######################
+class ImportStmt {
+      target:TOKEN;
+      construct(t:TOKEN) {
+      	target=t;		  					
+      }
+}
 
-if_stmt := INDENT "if" expr ":" (NL INCINDENT block_stmt DECINDENT | simple_stmt)
+class Document {
+      statements:Stmt[];
+}
+       
+###################> Gramma rules <########################
 
-block_stmt := if_stmt
+import_stmt := "import" VNAME:name NL {return ImportStmt(name);}
+empty_stmt := NL 
+# if_stmt := INDENT "if" expr ":" (NL INCINDENT block_stmt DECINDENT | simple_stmt)
+# block_stmt := if_stmt
 
+document := {d = Document();} (import_stmt:x {d.statements += x;} | empty_stmt) * {return d;}
 
