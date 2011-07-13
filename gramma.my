@@ -1,34 +1,39 @@
 #This is the gramma
 
 #########################> TOKENS <#########################
-CNAME := [A-z][a-zA-Z0-9_]*
-VNAVE := [a-z][a-zA-Z0-9_]*
+BINARY := b[01]+
+CNAME := [_]*[A-Z][a-zA-Z0-9_]*
+VNAVE := [_]*([a-z][a-zA-Z0-9_]*)?
 INTEGER := [0-9]+
 FLOAT := [0-9]*\.[0-9]+
+HEX := 0x[0-9A-Fa-f]+
 STRING := "[^"\\]*(\\.[^"\\]*)*"
-COMMENT_ := [\#][^\n]*
+__COMMENT__ := [\#][^\n]*
 TABS := [\t]+
 NEWLINE := [\n]
-WHITESPACE_ := [\t ]+
+__WHITESPACE__ := [\t ]+
 
 ######################> Tree Classes <######################
-class ImportStmt {
-      target:TOKEN;
+
+class ImportStmt(Stmt) {
+      var target:TOKEN;
       construct(t:TOKEN) {
-      	target=t;		  					
+      	this.target=t;
       }
 }
 
 class Document {
-      statements:Stmt[];
+      var statements:Stmt[];
 }
        
 ###################> Gramma rules <########################
 
-import_stmt := "import" VNAME:name NL {return ImportStmt(name);}
-empty_stmt := NL 
-# if_stmt := INDENT "if" expr ":" (NL INCINDENT block_stmt DECINDENT | simple_stmt)
-# block_stmt := if_stmt
+foobar := "hat":hat | "kat" "bar" "pork"*;
 
-document := {d = Document();} (import_stmt:x {d.statements += x;} | empty_stmt) * {return d;}
+import_stmt := "import" VNAME:name NL {return ImportStmt(name);};
+empty_stmt := NL;
+# if_stmt := INDENT "if" expr ":" (NL INCINDENT block_stmt DECINDENT | simple_stmt);
+# block_stmt := if_stmt;
+
+document := {d = Document();} (import_stmt:x {d.statements += x;} | empty_stmt) * {return d;};
 

@@ -409,21 +409,32 @@ class Lexer:
 
     def addClass(self, name, regex):
         self.rules.append( (name, regex) )
-
+        
     def outputPython(self, fa):
         out=[]
-        out.append("#Token constants")
+        out.append("\tdef __setupLexer__(self):")
+        out.append("\t\t#Find line indeces")
+        out.append("\t\tself.line_indices=[]")
+        out.append("\t\tself.bad_tokens=[]")
+        out.append("\t\ti=0")
+        out.append("\t\twhile i != -1:")
+        out.append("\t\t\tself.line_indices.append(i)")
+        out.append("\t\t\ti = self.input.find('\\r',i+1)")
+        out.append("\t\t")
+        out.append("\t\t#Token constants")
+
         am = {}
-        i = len(fa.states)
         for name in self.acc:
+            i = self.acc[name]+len(fa.states)
             am[self.acc[name]] = i
-            out.append("%s=%d"%(name, i))
-            i += 1
-        badtoken=i
-        out.append("BADTOKEN=%d"%i)
-        out.append("")
-        out.append("#State Table")
-        out.append("st=[")
+            out.append("\t\tself.%s=%d"%(name, i))
+
+        badtoken=len(self.acc)+len(fa.states)
+        
+        out.append("\t\tself.BADTOKEN=%d"%badtoken)
+        out.append("\t\t")
+        out.append("\t\t#State Table")
+        out.append("\t\tself.st=[")
         for s in fa.states:
             o=[]
             if s in fa.acc:
@@ -437,47 +448,68 @@ class Lexer:
                     o.append(a)
             out.append( "  [%s],"%(",".join(o)))
         out.append("]")
+        out.append("\t\tself.current_index=0")
         out.append("")
-        out.append("""def tokenize(inp):
-  inp+="\\0"
-  tokens = []
-  i=0
-  j=0
-  s=0
-  while i < len(inp):
-    s=st[s][ord(inp[i])]
-    if s >= %d:
-      if s == BADTOKEN: break
-      tokens.append( (s, inp[j:i]) )
-      s=0
-      j=i
-    else:
-      i+=1
-  return tokens
-"""%(len(fa.states)))
+        out.append("\tdef tokenText(self, t):")
+        out.append("\t\treturn self.input[t[1]:t[1]+t[2]]")
+        out.append("")
+        out.append("""\tdef nextToken(self):
+\t\tcs=0
+\t\ts=self.current_index
+\t\twhile True:
+\t\t\tcs = self.st[cs][ord(self.input[self.current_index])]
+\t\t\tself.current_index += 1
+\t\t\tif cs < %d: continue
+\t\t\tself.currentToken = (cs, s, self.current_index - s -1)
+\t\t\tif cs < %d:
+\t\t\t\tself.current_index -= 1
+\t\t\t\treturn True
+\t\t\tif cs != %d:
+\t\t\t\tself.current_index -= 1
+\t\t\t\ts=self.current_index
+\t\t\t\tcs = 0
+\t\t\t\tcontinue
+\t\t\ts=self.current_index
+\t\t\tcs = 0
+\t\t\tif self.current_index == len(self.input): return False
+\t\t\tself.bad_tokens.append(self.currentToken)
+"""%(len(fa.states),
+     len(fa.states)+self.firstHidden,
+     badtoken))
         return out
 
-        
+    #print self.firstHidden+len(fa.states)
+
     def generate(self, lang):
         nfa=NFA()
         s0 = nfa.addState()
 
-        i=0
+        h=0
         for name,regex in self.rules:
-            self.acc[name] = i
+            if name[0] != '_':
+                h += 1
+        i=0
+        self.firstHidden = h
+        for name,regex in self.rules:
+            if name[0] == '_':
+                ii=h
+                h += 1
+            else:
+                ii=i
+                i += 1
+            self.acc[name] = ii
             x = parseRegex(regex)
             (i0, o) = x.createNFA(nfa)
             nfa.addTransition(s0, i0, LAMBDA)
             y = nfa.addState()
             nfa.addTransition(o, y, LAMBDA)
-            nfa.accept(y, i)
-            i += 1
-
+            nfa.accept(y, ii)
+                  
         nfa.lambdaClosure()
         nfa.eliminateLambdas()
         fa = nfa.determinate()
-        fa.minimize()
 
+        fa.minimize()
         return self.outputPython(fa)
         
         
