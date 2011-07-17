@@ -10,12 +10,12 @@ HEX := 0x[0-9A-Fa-f]+
 STRING := "[^"\\]*(\\.[^"\\]*)*"
 __COMMENT__ := [\#][^\n]*
 TABS := [\t]+
-NEWLINE := [\n]
+NL := [\n]
 __WHITESPACE__ := [\t ]+
 
 ######################> Tree Classes <######################
 
-class ImportStmt(Stmt) {
+class ImportStmt {
       var target:TOKEN;
       construct(t:TOKEN) {
       	this.target=t;

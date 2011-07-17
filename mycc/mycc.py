@@ -12,6 +12,9 @@ TLIT='tlit'
 KEYWORD='keyword'
 SLIT='slit'
 
+def tokenIs(s):
+    return ", ".join(map(lambda x: "self.%s"%x, s))
+
 class Glex:
     def __init__(self, t):
         self.t=t
@@ -206,10 +209,10 @@ class GConjunction:
                 self.optional=True
 
     def emit(self, lines, indent):
-        lines.append("%sif self.tokenIs(%s):"%(indent, ", ".join(self.items[1].firstToken)))
+        lines.append("%sif self.tokenIs(%s):"%(indent, tokenIs(self.items[1].firstToken)))
         self.items[0].emit(lines, indent+"\t")
         for item in self.items[1:-1]:
-            lines.append("%selif self.tokenIs(%s):"%(indent, ", ".join(item.firstToken)))
+            lines.append("%selif self.tokenIs(%s):"%(indent, tokenIs(item.firstToken)))
         lines.append("%selse:"%indent)
         self.items[-1].emit(lines, indent+"\t")
             
@@ -310,7 +313,7 @@ class GStar:
         self.optional=True
 
     def emit(self, lines, indent):
-        lines.append("%swhile self.tokenIs(%s):"%(indent, ", ".join(self.firstToken)))
+        lines.append("%swhile self.tokenIs(%s):"%(indent, tokenIs(self.firstToken)))
         self.inner.emit(lines, indent+"\t")
         
 class GPlus:
@@ -589,10 +592,15 @@ class GParser:
 
     def emitParser(self, lang):
         lines=["""
+from astclasses import *
+
 class Parser:
 \tdef __init__(self, i):
 \t\tself.input = i+'\\0'
 \t\tself.__setupLexer__()
+\t
+\tdef tokenIs(self, *args):
+\t\treturn self.currentToken[1] in args
 """]
 
         lines += self.lexer.generate(lang)
@@ -615,6 +623,8 @@ gparser.computeFirstTokens()
 
 print "Generating ast classes"
 f = open(sys.argv[4],'w')
+f2 = open(sys.argv[5],'r')
+f.write(f2.read())
 f.write(gparser.emitClasses("python"))
 
 f = open(sys.argv[3],'w')

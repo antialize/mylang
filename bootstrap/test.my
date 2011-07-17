@@ -1,11 +1,3 @@
 import parser #This is a comment
-foobar "This is a string"
-       	     foobar
-1 1.0 1. foobar
-Abekat
-__AbeKat__
-__abekat_
-	hat_
-		foobar
-0x123Faf #The world is square
-b01010
+import abekat
+import foobar baz kat
