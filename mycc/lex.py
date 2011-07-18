@@ -412,16 +412,25 @@ class Lexer:
         
     def outputPython(self, fa):
         out=[]
-        out.append("\tdef __setupLexer__(self):")
-        out.append("\t\t#Find line indeces")
-        out.append("\t\tself.line_indices=[]")
-        out.append("\t\tself.bad_tokens=[]")
-        out.append("\t\ti=0")
-        out.append("\t\twhile i != -1:")
-        out.append("\t\t\tself.line_indices.append(i)")
-        out.append("\t\t\ti = self.input.find('\\r',i+1)")
-        out.append("\t\t")
-        out.append("\t\t#Token constants")
+        out.append("""
+\tdef tokenLocationString(self, token):
+\t\ti=bisect_left(self.line_indices, token[1])-1
+\t\tl="%s:%d: "%(os.path.basename(self.filename),i+1)
+\t\ts=max(self.line_indices[i]+1, token[1] + token[2] - 80 + len(l))
+\t\te=min(self.line_indices[i+1], s+80-len(l))
+\t\tx = token[1] - s + len(l)
+\t\treturn "%s%s\\n%s%s"%(l, self.input[s:e], " "*x, "~"*token[2] if token[2] else "^")
+\t
+\tdef __setupLexer__(self):
+\t\t#Find line indeces
+\t\tself.line_indices=[]
+\t\tself.bad_tokens=[]
+\t\ti=0
+\t\twhile i != -1:
+\t\t\tself.line_indices.append(i)
+\t\t\ti = self.input.find('\\n',i+1)
+\t\t
+\t\t#Token constants""")
 
         am = {}
         for name in self.acc:

@@ -12,8 +12,11 @@ TLIT='tlit'
 KEYWORD='keyword'
 SLIT='slit'
 
-def tokenIs(s):
+def tlist(s):
     return ", ".join(map(lambda x: "self.%s"%x, s))
+
+def alist(s, d={}):
+    return ", ".join(map(lambda x: "(self.%s, \"%s\")"%(x,d.get(x, x)), s))
 
 class Glex:
     def __init__(self, t):
@@ -26,7 +29,7 @@ class Glex:
             if x == -1: break
             self.line_index.append(x)
             
-        self.kws=[':','(',')','+','|','*','?',':=','[]','+=',';','.', 'class', 'return','construct', '{', '}',',','=', 'var','this']
+        self.kws=[':','(',')','+','|','*','?',':=','[',']','+=',';','.', 'class', 'return','construct', '{', '}',',','=', 'var','this','recover']
         self.kws.sort(key=lambda x: -len(x))
 
     def tloc(self, t):
@@ -56,7 +59,7 @@ class Glex:
 
         if self.i >= len(self.t): return None
         for x in self.kws:
-            if self.t[self.i:].startswith(x):
+            if self.t[self.i:].startswith(x) and (not x.isalnum() or not self.t[self.i+len(x)].isalnum() and not self.t[self.i+len(x)] in ['_']):
                 res=(KEYWORD, x, self.i)
                 self.i += len(x)
                 return res
@@ -200,19 +203,22 @@ class GConjunction:
     def computeFirstToken(self, p):
         self.optional=False
         self.firstToken=set()
+        self.firstDisplayNames={}
         for item in self.items:
             item.computeFirstToken(p)
             if not self.firstToken.isdisjoint(item.firstToken):
                 raise ParseError("None disjoint first tokens in conjunction", None)
             self.firstToken.update(item.firstToken)
+            self.firstDisplayNames.update(item.firstDisplayNames)
             if item.optional:
                 self.optional=True
 
     def emit(self, lines, indent):
-        lines.append("%sif self.tokenIs(%s):"%(indent, tokenIs(self.items[1].firstToken)))
+        lines.append("%sif self.tokenIs(%s):"%(indent, tlist(self.items[0].firstToken)))
         self.items[0].emit(lines, indent+"\t")
         for item in self.items[1:-1]:
-            lines.append("%selif self.tokenIs(%s):"%(indent, tokenIs(item.firstToken)))
+            lines.append("%selif self.tokenIs(%s):"%(indent, tlist(item.firstToken)))
+            item.emit(lines, indent+"\t")
         lines.append("%selse:"%indent)
         self.items[-1].emit(lines, indent+"\t")
             
@@ -229,39 +235,67 @@ class GContinuation:
             
         self.optional=False
         self.firstToken=set()
+        self.firstDisplayNames={}
         for item in self.items:
             if isinstance(item, GBlock): continue
+            if isinstance(item, GTokenRef) and item.recover: continue
             if not self.firstToken.isdisjoint(item.firstToken):
                 raise ParseError("Foobar")
-                
             self.firstToken.update(item.firstToken)
+            self.firstDisplayNames.update(item.firstDisplayNames)
             if not item.optional: return
         self.optional=True
 
 
     def emit(self, lines, indent):
-        for item in self.items:
+        tryEmitted=False
+        for i in xrange(len(self.items)):
+            item = self.items[i]
+            et=False
+            if not tryEmitted:
+                for j in self.items[i:]:
+                    if isinstance(j, GTokenRef) and j.recover:
+                        et=True
+            if et:
+                lines.append("%stry:"%indent)
+                indent=indent+"\t"
+                tryEmitted=True
+            
             if isinstance(item, GBlock):
                 item.emit(lines, indent)
                 continue
+            
+            if isinstance(item, GTokenRef) and item.recover:
+                tryEmitted=False
+                indent=indent[:-1]
+                lines.append("%sexcept ParseError, e:"%indent)
+                lines.append("%s\tself.parseErrors.append(e)"%indent)
+                lines.append("%s\twhile not self.tokenIs(%s):"%(indent, tlist(item.firstToken)))
+                lines.append("%s\t\tself.nextToken()"%indent)
+                continue
+
             if not item.optional:
-                lines.append("%sself.tokenAssert(%s)"%(indent, ",".join(item.firstToken)))
+                lines.append("%sself.tokenAssert(%s)"%(indent, alist(item.firstToken, item.firstDisplayNames)))
             item.emit(lines, indent)
-                
+            
 class GTokenRef:
-    def __init__(self, t):
+    def __init__(self, t, recover=False):
         self.token = t
         self.tname = t[1]
         self.displayName = None
         self.name = None
+        self.recover = recover
 
     def computeFirstToken(self, p):
         self.firstToken=set([self.tname])
+        self.firstDisplayNames={}
+        if self.displayName:
+            self.firstDisplayNames[self.tname] = self.displayName
         self.optional=False
 
     def emit(self, lines, indent):
         if self.name:
-            lines.append("%s%s=self.currentToken()"%(indent, self.name[1]))
+            lines.append("%s%s=self.currentToken"%(indent, self.name[1]))
         lines.append("%sself.nextToken()"%indent)
         
 class GGrammaRef:
@@ -270,10 +304,13 @@ class GGrammaRef:
         self.name = None
 
     def computeFirstToken(self, p):
-        self.firstToken, self.optional = p.computeRuleFirstToken(self.gramma)
+        self.firstToken, self.optional, self.firstDisplayNames = p.computeRuleFirstToken(self.gramma)
 
     def emit(self, lines, indent):
-        lines.append("%sself.parse_%s()"%(indent, self.gramma[1]))
+        if self.name:
+            lines.append("%s%s=self.parse_%s()"%(indent, self.name[1], self.gramma[1]))
+        else:
+            lines.append("%sself.parse_%s()"%(indent, self.gramma[1]))
         
 class GOpt:
     def __init__(self, t):
@@ -306,14 +343,19 @@ class GClasslookup:
 class GStar:
     def __init__(self, t):
         self.inner = t
+        self.captureAll = False
 
     def computeFirstToken(self, p):
         self.inner.computeFirstToken(p)
         self.firstToken = self.inner.firstToken
+        self.firstDisplayNames = self.inner.firstDisplayNames
         self.optional=True
 
     def emit(self, lines, indent):
-        lines.append("%swhile self.tokenIs(%s):"%(indent, tokenIs(self.firstToken)))
+        if self.captureAll:
+            lines.append("%swhile not self.tokenIs(self.BADTOKEN):"%indent)
+        else:
+            lines.append("%swhile self.tokenIs(%s):"%(indent, tlist(self.firstToken)))
         self.inner.emit(lines, indent+"\t")
         
 class GPlus:
@@ -350,7 +392,9 @@ class GParser:
         self.tass(TLIT) #Name
         t = GType(self.nt)
         self.gnt()
-        if self.tis(KEYWORD, '[]'):#In an array
+        if self.tis(KEYWORD, '['):#In an array
+            self.gnt()
+            self.tass(KEYWORD, ']')
             t.isArray=True
             self.gnt()
         return t
@@ -447,16 +491,17 @@ class GParser:
                 self.gnt()
                 self.tass(KEYWORD, '(')
                 self.gnt()
-                while True:
-                    self.tass(GLIT) #Name
-                    n=self.nt
-                    self.gnt()
-                    self.tass(KEYWORD, ':')
-                    self.gnt()
-                    t=self.parseType()
-                    con.arguments.append( (n,t) )
-                    if not self.tis(KEYWORD,','): break
-                    self.gnt()
+                if not self.tis(KEYWORD, ')'):
+                    while True:
+                        self.tass(GLIT) #Name
+                        n=self.nt
+                        self.gnt()
+                        self.tass(KEYWORD, ':')
+                        self.gnt()
+                        t=self.parseType()
+                        con.arguments.append( (n,t) )
+                        if not self.tis(KEYWORD,','): break
+                        self.gnt()
                 self.tass(KEYWORD, ')')
                 self.gnt()
                 self.tass(KEYWORD, '{')
@@ -503,10 +548,25 @@ class GParser:
                     x=GTokenRef(self.nt)
                     v = self.nt[1][1:-1]
                     x.tname = self.lexer.addKeyword(v)
-                    x.displayname = v
+                    x.displayName = "'%s'"%v
                     self.gnt()
                 elif self.tis(TLIT):
                     x=GTokenRef(self.nt)
+                    self.gnt()
+                    if self.tis(KEYWORD, '['):
+                        self.gnt()
+                        if self.tis(SLIT):
+                            x.displayName = self.nt[1][1:-1]
+                        else:
+                            x.displayName = self.nt[1]
+                        self.gnt()
+                        self.tass(KEYWORD, ']')
+                        self.gnt()
+
+                elif self.tis(KEYWORD, 'recover'):
+                    self.gnt()
+                    self.tass(TLIT)
+                    x=GTokenRef(self.nt, True)
                     self.gnt()
                 elif self.tis(GLIT):
                     x=GGrammaRef(self.nt)
@@ -521,6 +581,9 @@ class GParser:
             if self.tis(KEYWORD, '*'):
                 x = GStar(x)
                 self.gnt()
+                if self.tis(KEYWORD, '*'):
+                    x.captureAll = True
+                    self.gnt();
             elif self.tis(KEYWORD, '+'):
                 x = GPlus(x)
                 self.gnt()
@@ -579,7 +642,7 @@ class GParser:
             self.current.add(rule)
             r.computeFirstToken(self)
             self.current.remove(rule)
-        return (r.firstToken, r.optional)
+        return (r.firstToken, r.optional, r.firstDisplayNames)
     
     def computeFirstTokens(self):
         try:
@@ -593,20 +656,37 @@ class GParser:
     def emitParser(self, lang):
         lines=["""
 from astclasses import *
+from bisect import bisect_left
+import os.path
+
+class ParseError(BaseException):
+\tdef __init__(self, message, token):
+\t\tself.message=message
+\t\tself.token=token
 
 class Parser:
-\tdef __init__(self, i):
-\t\tself.input = i+'\\0'
+\tdef __init__(self, filename):
+\t\tself.filename = filename
+\t\tself.input = open(filename,"r").read()+'\\0'
+\t\tself.parseErrors = []
 \t\tself.__setupLexer__()
 \t
 \tdef tokenIs(self, *args):
-\t\treturn self.currentToken[1] in args
+\t\treturn self.currentToken[0] in args
+\t
+\tdef tokenAssert(self, *args):
+\t\tif self.tokenIs(*map(lambda x: x[0], args)): return
+\t\tif len(args) > 3: t="Unexpected token"
+\t\telse: t="Expected %s"%(" or ".join(map(lambda x: x[1], args)))
+\t\traise ParseError(t, self.currentToken)
 """]
 
         lines += self.lexer.generate(lang)
         for rule in self.rules:
             lines.append("\tdef parse_%s(self):"%(rule))
+            #lines.append("\t\tprint '>> parse_%s'"%rule)
             self.rules[rule][1].emit(lines, "\t\t")
+            #lines.append("\t\tprint '<< parse_%s'"%rule)
             lines.append("")
         return "\n".join(lines)
 

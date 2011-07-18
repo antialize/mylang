@@ -3,7 +3,7 @@
 #########################> TOKENS <#########################
 BINARY := b[01]+
 CNAME := [_]*[A-Z][a-zA-Z0-9_]*
-VNAVE := [_]*([a-z][a-zA-Z0-9_]*)?
+VNAME := [_]*([a-z][a-zA-Z0-9_]*)?
 INTEGER := [0-9]+
 FLOAT := [0-9]*\.[0-9]+
 HEX := 0x[0-9A-Fa-f]+
@@ -24,16 +24,25 @@ class ImportStmt {
 
 class Document {
       var statements:Stmt[];
+      construct() {}
 }
        
 ###################> Gramma rules <########################
 
 foobar := "hat":hat | "kat" "bar" "pork"*;
 
-import_stmt := "import" VNAME:name NL {return ImportStmt(name);};
-empty_stmt := NL;
+import_stmt := "import" VNAME:name NL[newline] {return ImportStmt(name);};
+empty_stmt := NL[newline];
 # if_stmt := INDENT "if" expr ":" (NL INCINDENT block_stmt DECINDENT | simple_stmt);
 # block_stmt := if_stmt;
 
-document := {d = Document();} (import_stmt:x {d.statements += x;} | empty_stmt) * {return d;};
+class_decl := "class" NL;
+
+document := {d = Document();} 
+	    ((
+               import_stmt:x {d.statements += x;} 
+	     | class_decl
+	     | empty_stmt)
+	     recover NL)
+ 	    ** {return d;};
 
